@@ -9,6 +9,10 @@
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
 #import "LFVideoConfig.h"
+typedef struct {
+    unsigned int isExistonCameraOutputData:1;
+} LFCameraDeviceDelegateFlags;
+
 @protocol LFCameraDeviceDelegate <NSObject>
 /**
  *  摄像头采集到的数据输出
@@ -19,15 +23,15 @@
 //滤镜常量
 typedef enum : char {
     //美颜滤镜
-    LFMicDeviceFilter_Beautiful=1,
+    LFCameraDeviceFilter_Beautiful=1,
     //原始
-    LFMicDeviceFilter_Original=2,
+    LFCameraDeviceFilter_Original=2,
     //拉伸
-    LFMicDeviceFilter_Stretch=3,
+    LFCameraDeviceFilter_Stretch=3,
     //挤压
-    LFMicDeviceFilter_Pinch=4,
+    LFCameraDeviceFilter_Pinch=4,
     //管道
-    LFMicDeviceFilter_Vignette=5
+    LFCameraDeviceFilter_Vignette=5
 
     
 } LFCameraDeviceFilter;
@@ -37,6 +41,7 @@ typedef enum : char {
  *  代理
  */
 @property (weak,nonatomic) id<LFCameraDeviceDelegate> delegate;
+@property (assign,nonatomic) LFCameraDeviceDelegateFlags delegateFlags;
 /**
  *  预览页
  */
@@ -64,7 +69,7 @@ typedef enum : char {
 /**
  *  焦距调整 默认为1.0，可在1.0 ~ 3.0之间调整
  */
-@property (assign,nonatomic) CGFloat zoomScale;
+@property (assign,nonatomic,readonly) CGFloat zoomScale;
 /**
  *  水印
  */
@@ -75,6 +80,26 @@ typedef enum : char {
  *  @param videoConfig 音频采样配置
  */
 -(instancetype)init:(LFVideoConfig *)videoConfig;
+/**
+ *  设置缩放
+ */
+-(void)setVideoZoomScale:(CGFloat)zoomScale andError:(void (^)())errorBlock andfinish:(void (^)())finishBlock;
+/**
+ *  手动对焦
+ *
+ *  @param point 焦点位置
+ */
+-(void)setFocusPoint:(CGPoint)point;
+/**
+ *  设置对焦模式
+ *
+ *  @param focusMode 对焦模式，默认系统采用系统设备采用的是持续自动对焦模型AVCaptureFocusModeContinuousAutoFocus
+ */
+-(void)setFocusMode:(AVCaptureFocusMode)focusMode;
+/**
+ *  当前摄像头是否支持手动对焦
+ */
+-(BOOL)isSupportFocusPoint;
 /**
  *  停止采集
  */

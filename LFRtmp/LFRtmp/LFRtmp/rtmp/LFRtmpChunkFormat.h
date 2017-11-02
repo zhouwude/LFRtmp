@@ -3,7 +3,7 @@
 //  myrtmp
 //
 //  Created by liuf on 16/7/22.
-// 
+//
 //
 /**
  *  块格式，包含了Basic Header，Message Header,ExtendedTimestamp,Chunk Data 四部分组成
@@ -13,40 +13,21 @@
 #import <Foundation/Foundation.h>
 #import "LFRtmpChunkData.h"
 #import "LFRtmpBasicHeader.h"
-typedef enum : char {
-    LFRtmpSendCommandConnect=0x1,//connect命令
-    LFRtmpSendCommandReleaseStream=0x1,//releaseStream命令
-    LFRtmpSendCommandFCPublish=0x2,//FCPublish命令
-    LFRtmpSendCommandCreateStream=0x3,//createStream命令
-    LFRtmpSendCommand_Checkbw=0x4,//_checkbw命令
-    LFRtmpSendCommandDeleteStream=0x5,//deleteStream命令
-    LFRtmpSendCommandPublishStream=0x6,//publish命令
-    LFRtmpSendCommandFCUnPublishStream=0x7,//FCUnpublish命令
-    
-} LFRtmpSendCommandType;
-
-@protocol LFRtmpChunkFormatDelegate <NSObject>
-/**
- *  处理命令消息
- */
--(void)onHandleCommand:(LFRtmpResponseCommand *)command sendCmdType:(LFRtmpSendCommandType)sendCmdType;
-
-@end
 @interface LFRtmpChunkFormat : NSObject
 
-@property (assign,nonatomic) uint32_t chunkSize;
+@property (assign,nonatomic) uint32_t inChunkSize;//接收到的包大小
+@property (assign,nonatomic) uint32_t outChunkSize;//发送的包大小
 @property (assign,nonatomic) uint32_t abortChunkStreamID;
 @property (assign,nonatomic) uint32_t acknowledgementSeq;
 @property (assign,nonatomic) uint32_t windowAckSize;
 @property (assign,nonatomic) uint32_t bandWidth;
 @property (assign,nonatomic) LFRtmpBandWidthLimitType bandWidthLimiType;
 @property (assign,nonatomic) BOOL isStreamBegin;
-@property (weak,nonatomic) id<LFRtmpChunkFormatDelegate>delegate;
 /**
  *  用于RTMP连接的命令数据块
  *
- *  @param appName 例如有推流路径为rtmp://userpush.livecdn.cditv.cn/userlive/liuf，appName则为userlive
- *  @param tcUrl 例如有推流路径为rtmp://userpush.livecdn.cditv.cn/userlive/liuf，tcUrl则为rtmp://userpush.livecdn.cditv.cn/userlive
+ *  @param appName 例如有推流路径为rtmp://xx.com/userlive/liuf，appName则为userlive
+ *  @param tcUrl 例如有推流路径为rtmp://xx.com/userlive/liuf，tcUrl则为rtmp://xx.com/userlive
  *  @return NSData。
  */
 -(NSData *)connectChunkFormat:(NSString *)appName tcUrl:(NSString *)tcUrl;
@@ -71,7 +52,7 @@ typedef enum : char {
  *
  *  @return NSData
  */
--(NSData *)createStreamChunkForamt;
+-(NSArray *)createStreamChunkForamt;
 /**
  *  用于RTMP checkbw的命令数据块
  *
@@ -101,20 +82,20 @@ typedef enum : char {
  */
 -(NSData *)fcUnPublishStreamChunkFormat:(NSString *)streamName;
 /**
- *  处理发出连接请求后服务器的响应
- *
- *  @param packet 数据包
- *  @param size   包的有效位数
- *  @param sendCmdType 发送的命令类型
- *  @return 是否处理成功
- */
--(void)parseResponsePacket:(char *)packet size:(int)size sendCmdType:(LFRtmpSendCommandType)sendCmdType;
-/**
  *  FLV AAC音频同步包。 不论向 RTMP 服务器推送音频还是视频，都需要按照 FLV 的格式进行封包。因此，在我们向服务器推送第一个 AAC包之前，
  *  需要首先推送一个音频 Tag [AAC Sequence Header].
  *  具体内容见FLV官方文档AAC Sequence Header章节
  *  @return NSData
  */
+/**
+ *  用于拼装RTMP setDataFrame命令的AMF0数据结构,用于设置元数据metadata，音视频参数
+ *
+ *  @param videoConfig 视频信息
+ *  @param audioConfig 音频信息
+ *  @return NSData
+ */
+-(NSData *)setDataFrameChunkFormat:(LFVideoConfig *)videoConfig
+                       audioConfig:(LFAudioConfig *)audioConfig;
 -(NSMutableData *)flvAACSequenceHeader;
 /**
  *  使用FLV封装AAC格式的音频包
@@ -136,7 +117,37 @@ typedef enum : char {
  *  @return NSData
  */
 -(NSData *)flvVideoData:(LFVideoEncodeInfo *)info;
-
+/**
+ *  用于拼装RTMP getStreamLength命令的AMF0数据结构
+ *
+ *  @param streamName 流名
+ *  @return NSData
+ */
+-(NSData *)getStreamLengthChunkFormat:(NSString *)streamName;
+/**
+ *  用于拼装RTMP play命令的AMF0数据结构
+ *
+ *  @param streamName 流名
+ *  @return NSData
+ */
+-(NSData *)playChunkFormat:(NSString *)streamName;
+/**
+ *  用于拼装RTMP 用户控制事件的setBufferLength，这个事件在服务器开始处理流数据前发送。类型为3，事件数据的前 4 字节表示流 ID,接下来的4 字节表示缓冲区的大小(单位是毫秒)。
+ *
+ *  @param streamid 流ID
+ *  @param  buffersize 缓冲区大小
+ *  @return NSData
+ */
+-(NSData *)setBufferLengthChunkFormat:(uint32_t)streamId bufferSize:(uint32_t)bufferSize;
+/**
+ *  用于拼装RTMP pause命令的AMF0数据结构
+ *
+ *  @param isFlag 暂停流还是继续
+ *  @param milliSeconds 流暂停或者继续播放的毫秒数
+ 
+ *  @return NSData
+ */
+-(NSData *)pauseChunkFormat:(BOOL)isFlag milliSeconds:(int)milliSeconds;
 /**
  *  当前时间戳
  *
@@ -144,9 +155,10 @@ typedef enum : char {
  */
 -(uint32_t)currentTimestamp;
 /**
- 如果一个包的大小超过chunk size的大小（如果没有设置默认为128b）则128整倍数位上的数据不计入有效数据
- 这种数据称为包分隔符，包分隔符的规则为0xc0|chunk stream ID
- 例如如果是音视频块流则chunk stream ID为0x4，包分隔符=0xc0|0x2=0xc4
+ 如果一个包的大小超过chunk size的大小 则需要添加包分隔符，包分隔符的规则为0xc0|chunk stream ID
+ 例如如果是协议控制块流则chunk stream ID为0x2，包分隔符=0xc0|0x2=0xc2
+ 每两个分隔符之前的数据量是chunk size 的大小，而在整个数据包中分隔符的下标位置的规律
+ 为chunk size，(chunk size)*2+1，(chunk size)*3+2 。。。这个规律
  *
  *  @param chunkStreamID 块流ID
  *

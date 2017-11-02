@@ -3,7 +3,7 @@
 //  myrtmp
 //
 //  Created by liuf on 16/7/22.
-// 
+//
 //
 #define kBandWidthSize @"bandWidthSize"
 #define kBandWidthLimitType @"bandWidthLimitType"
@@ -11,6 +11,8 @@
 #import "LFRtmpMessageHeader.h"
 #import "LFRtmpResponseCommand.h"
 #import "LFVideoEncodeInfo.h"
+#import "LFVideoConfig.h"
+#import "LFAudioConfig.h"
 typedef enum : char {
     LFRtmpBandWidthLimitHard=0x0,//0-Hard(硬):对端应该(SHOULD)用指定的窗口大小限制自己的输出带宽。
     LFRtmpBandWidthLimitSoft=0x1,//1-Soft(软):对端应该(SHOULD)使用指定的窗口大小限制自己的输出带宽,如果已经 限制了的则取二者中小值。
@@ -22,6 +24,10 @@ typedef enum : char {
  */
 @interface LFRtmpChunkData : NSObject
 /**
+ *  原始二进制数据
+ */
+@property (strong,readonly,nonatomic) NSData *data;
+/**
  *  初始化
  *
  *  @param data        用于初始化的二进制数据
@@ -29,7 +35,7 @@ typedef enum : char {
  *
  *  @return self
  */
--(instancetype)init:(NSMutableData *)data;
+-(instancetype)init:(NSData *)data;
 /**
  *  处理协议控制消息 Set Chunk Size
  *
@@ -74,8 +80,8 @@ typedef enum : char {
 /**
  *  用于拼装RTMP连接命令的AMF0数据结构
  *
- *  @param appName 例如有推流路径为rtmp://userpush.livecdn.cditv.cn/userlive/liuf，appName则为userlive
- *  @param tcUrl 例如有推流路径为rtmp://userpush.livecdn.cditv.cn/userlive/liuf，tcUrl则为rtmp://userpush.livecdn.cditv.cn/userlive
+ *  @param appName 例如有推流路径为rtmp://xx.com/userlive/liuf，appName则为userlive
+ *  @param tcUrl 例如有推流路径为rtmp://xx.com/userlive/liuf，tcUrl则为rtmp://xx.com/userlive
  *  @return NSData。
  */
 +(NSData *)connectData:(NSString *)appName tcUrl:(NSString *)tcUrl;
@@ -100,7 +106,7 @@ typedef enum : char {
  *
  *  @return NSData
  */
-+(NSData *)createStreamData;
++(NSArray *)createStreamData;
 /**
  *  用于拼装RTMP checkbw命令的AMF0数据结构
  *
@@ -131,6 +137,16 @@ typedef enum : char {
  *  @return NSData
  */
 +(NSData *)fcunPublishData:(NSString *)streamName;
+
+/**
+ *  用于拼装RTMP setDataFrame命令的AMF0数据结构,用于设置元数据metadata，音视频参数
+ *
+ *  @param videoConfig 视频信息
+ *  @param audioConfig 音频信息
+ *  @return NSData
+ */
++(NSData *)setDataFrameData:(LFVideoConfig *)videoConfig
+                audioConfig:(LFAudioConfig *)audioConfig;
 /**
  *  FLV AAC音频同步包。 不论向 RTMP 服务器推送音频还是视频，都需要按照 FLV 的格式进行封包。因此，在我们向服务器推送第一个 AAC包之前，
  *  需要首先推送一个音频 Tag [AAC Sequence Header].
@@ -159,4 +175,37 @@ typedef enum : char {
  *  @return NSData
  */
 +(NSData *)flvVideoData:(LFVideoEncodeInfo *)info;
+/**
+ *  用于拼装RTMP getStreamLength命令的AMF0数据结构
+ *
+ *  @param streamName 流名
+ *
+ *  @return NSData
+ */
++(NSData *)getStreamLengthData:(NSString *)streamName;
+/**
+ *  用于拼装RTMP play命令的AMF0数据结构
+ *
+ *  @param streamName 流名
+ *
+ *  @return NSData
+ */
++(NSData *)playData:(NSString *)streamName;
+/**
+ *  用于拼装RTMP 用户控制事件的setBufferLength，这个事件在服务器开始处理流数据前发送。类型为3，事件数据的前 4 字节表示流 ID,接下来的4 字节表示缓冲区的大小(单位是毫秒)。
+ *
+ *  @param streamid 流ID
+ *  @param  buffersize 缓冲区大小
+ *  @return NSData
+ */
++(NSData *)setBufferLengthData:(uint32_t)streamId bufferSize:(uint32_t)bufferSize;
+/**
+ *  用于拼装RTMP pause命令的AMF0数据结构
+ *
+ *  @param isFlag 暂停流还是继续
+ *  @param milliSeconds 流暂停或者继续播放的毫秒数
+ 
+ *  @return NSData
+ */
++(NSData *)pauseData:(BOOL)isFlag milliSeconds:(int)milliSeconds;
 @end

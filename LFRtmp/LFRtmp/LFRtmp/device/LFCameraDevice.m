@@ -13,6 +13,8 @@
 #import "GPUImageStretchDistortionFilter.h"
 #import "GPUImagePinchDistortionFilter.h"
 #import "GPUImageVignetteFilter.h"
+@interface LFCameraDevice()<GPUImageVideoCameraDelegate>
+@end
 @implementation LFCameraDevice
 {
     GPUImageVideoCamera *_camera;
@@ -22,7 +24,20 @@
     LFVideoConfig *_videoConfig;
     GPUImageAlphaBlendFilter *_blendFilter;
     GPUImageUIElement *_uiElementInput;
-    UIView *_logoContentView;
+    UIView *_uiContentView;
+}
+/**
+ 设置代理
+ 
+ @param delegate NetServerDelegate
+ */
+-(void)setDelegate:(id<LFCameraDeviceDelegate>)delegate{
+    _delegate=delegate;
+    if (_delegate) {
+        _delegateFlags.isExistonCameraOutputData=[_delegate respondsToSelector:@selector(onCameraOutputData:)];
+    } else {
+        _delegateFlags.isExistonCameraOutputData=0;
+    }
 }
 /**
  *  初始化
@@ -33,8 +48,8 @@
     self=[super init];
     if(self){
         _videoConfig=videoConfig;
+        [self setVideoZoomScale:1.0 andError:nil andfinish:nil];
         [self configCamera];
-        self.zoomScale = 1.0;
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(willEnterBackground:)
                                                      name:UIApplicationWillResignActiveNotification
@@ -74,15 +89,13 @@
     if(!_gpuImageView){
         _gpuImageView = [[GPUImageView alloc] initWithFrame:[UIScreen mainScreen].bounds];
         [_gpuImageView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
-        [_gpuImageView setAutoresizingMask:UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight];
     }
-    if(!_logoContentView){
-        _logoContentView = [UIView new];
-        _logoContentView.frame = CGRectMake(0, 0, _gpuImageView.frame.size.width, _gpuImageView.frame.size.height);
-        _logoContentView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    if(!_uiContentView){
+        _uiContentView = [UIView new];
+        _uiContentView.frame = CGRectMake(0, 0, _gpuImageView.frame.size.width, _gpuImageView.frame.size.height);
     }
     if(!_uiElementInput){
-        _uiElementInput=[[GPUImageUIElement alloc] initWithView:_logoContentView];
+        _uiElementInput=[[GPUImageUIElement alloc] initWithView:_uiContentView];
     }
     if(!_blendFilter){
         _blendFilter=[[GPUImageAlphaBlendFilter alloc] init];
@@ -123,8 +136,8 @@
             [_gpuImageView removeFromSuperview];
         }
         [preview insertSubview:_gpuImageView atIndex:0];
-        _gpuImageView.bounds=preview.bounds;
-        _logoContentView.bounds=preview.bounds;
+        _gpuImageView.frame=preview.bounds;
+        _uiContentView.frame=_gpuImageView.bounds;
     });
 }
 /**
@@ -203,14 +216,70 @@
 /**
  *  设置缩放
  */
--(void)setZoomScale:(CGFloat)zoomScale{
+-(void)setVideoZoomScale:(CGFloat)zoomScale andError:(void (^)())errorBlock andfinish:(void (^)())finishBlock{
     if(_camera&&_camera.inputCamera){
-        if([_camera.inputCamera lockForConfiguration:nil]){
-            _camera.inputCamera.videoZoomFactor=zoomScale;
-            [_camera.inputCamera unlockForConfiguration];
-            _zoomScale=zoomScale;
+        CGFloat maxVideoZoomScale = _camera.inputCamera.activeFormat.videoMaxZoomFactor;
+        if (maxVideoZoomScale > 1){
+            if([_camera.inputCamera lockForConfiguration:nil]){
+                _camera.inputCamera.videoZoomFactor=zoomScale;
+                [_camera.inputCamera unlockForConfiguration];
+                _zoomScale=zoomScale;
+                if(finishBlock){
+                    finishBlock();
+                }
+            }
+        }else{
+            if(errorBlock){
+                errorBlock();
+            }
         }
+        
     }
+}
+/**
+ *  手动对焦
+ *
+ *  @param point 焦点位置
+ */
+-(void)setFocusPoint:(CGPoint)point{
+    if (_camera.inputCamera.isFocusPointOfInterestSupported) {
+        NSError *error = nil;
+        [_camera.inputCamera lockForConfiguration:&error];
+        //设置焦点的位置
+        if ([_camera.inputCamera isFocusPointOfInterestSupported]) {
+            [_camera.inputCamera setFocusPointOfInterest:point];
+        }
+        
+        // 聚焦模式
+        if ([_camera.inputCamera isFocusModeSupported:AVCaptureFocusModeAutoFocus]) {
+            [_camera.inputCamera setFocusMode:AVCaptureFocusModeAutoFocus];
+        }else{
+            NSLog(@"-------------LFCameraDevice：对焦模式修改失败-------------");
+        }
+        [_camera.inputCamera unlockForConfiguration];
+    }
+}
+/**
+ *  设置对焦模式
+ *
+ *  @param focusMode 对焦模式，默认系统采用系统设备采用的是持续自动对焦模型AVCaptureFocusModeContinuousAutoFocus
+ */
+-(void)setFocusMode:(AVCaptureFocusMode)focusMode{
+    NSError *error = nil;
+    [_camera.inputCamera lockForConfiguration:&error];
+    // 聚焦模式
+    if ([_camera.inputCamera isFocusModeSupported:focusMode]) {
+        [_camera.inputCamera setFocusMode:focusMode];
+    }else{
+        NSLog(@"-------------LFCameraDevice：对焦模式修改失败-------------");
+    }
+    [_camera.inputCamera unlockForConfiguration];
+}
+/**
+ *  当前摄像头是否支持手动对焦
+ */
+-(BOOL)isSupportFocusPoint{
+    return _camera.inputCamera.isFocusPointOfInterestSupported;
 }
 /**
  *  滤镜 默认使用美颜效果 可使用GPUImage的定义的滤镜效果，也可基于GPUImage实现自定义滤镜
@@ -229,41 +298,40 @@
     }
     _logoView=logoView;
     _blendFilter.mix=_logoView.alpha;
-    [_logoContentView addSubview:_logoView];
+    [_uiContentView addSubview:_logoView];
     [self configFilter];
 }
 /**
  *  配置滤镜
  */
 - (void)configFilter{
-    
     [_filter removeAllTargets];
     [_blendFilter removeAllTargets];
     [_uiElementInput removeAllTargets];
     [_camera removeAllTargets];
     _output=[[LFOriginalFilter alloc] init];
     switch (_filterType) {
-        case LFMicDeviceFilter_Beautiful:
+        case LFCameraDeviceFilter_Beautiful:
         {
             _filter=[[LFBeautifulFilter alloc] init];
         }
             break;
-        case LFMicDeviceFilter_Original:
+        case LFCameraDeviceFilter_Original:
         {
             _filter=[[LFOriginalFilter alloc] init];
         }
             break;
-        case LFMicDeviceFilter_Stretch:
+        case LFCameraDeviceFilter_Stretch:
         {
             _filter=[[GPUImageStretchDistortionFilter alloc] init];
         }
             break;
-        case LFMicDeviceFilter_Pinch:
+        case LFCameraDeviceFilter_Pinch:
         {
             _filter=[[GPUImagePinchDistortionFilter alloc] init];
         }
             break;
-        case LFMicDeviceFilter_Vignette:
+        case LFCameraDeviceFilter_Vignette:
         {
             _filter=[[GPUImageVignetteFilter alloc] init];
             [(GPUImageVignetteFilter *)_filter setVignetteEnd:0.5];
@@ -281,8 +349,7 @@
         __strong __typeof(weakSelf)strongSelf = weakSelf;
         @autoreleasepool {
             CVPixelBufferRef pixelBufferRef = [imageOutput.framebufferForOutput pixelBuffer];
-            if(pixelBufferRef&&strongSelf.delegate
-               &&[strongSelf.delegate respondsToSelector:@selector(onCameraOutputData:)]){
+            if(pixelBufferRef&&strongSelf.delegateFlags.isExistonCameraOutputData){
                 [strongSelf.delegate onCameraOutputData:pixelBufferRef];
             }
         }
@@ -317,7 +384,6 @@
     [_camera resumeCameraCapture];
     [UIApplication sharedApplication].idleTimerDisabled = YES;
 }
-
 -(void)dealloc{
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIApplicationWillResignActiveNotification object:nil];

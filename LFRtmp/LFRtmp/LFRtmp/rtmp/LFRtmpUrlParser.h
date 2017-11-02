@@ -10,9 +10,9 @@
 
 @interface LFRtmpUrlParser : NSObject
 /**
- *  地址为rtmp://userpush.livecdn.cditv.cn/userlive/liuf 
-    tcUrl:rtmp://userpush.livecdn.cditv.cn/userlive
-    domainName:userpush.livecdn.cditv.cn
+ *  地址为rtmp://xx.com/userlive/liuf
+    tcUrl:rtmp://xx.com/userlive
+    domainName:xx.com
     appName:userlive
     streamName:liuf
  */
